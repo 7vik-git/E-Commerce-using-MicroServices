@@ -12,6 +12,7 @@ import com.learning.order.customer.CustomerClient;
 import com.learning.order.dto.PurchaseRequest;
 import com.learning.order.product.ProductClient;
 import com.learning.order.repository.OrderRepository;
+import feign.FeignException;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -59,7 +60,12 @@ public class OrderService {
                 customer
         );
 
-        paymentClient.requestOrderPayment(paymentRequest);
+        try {
+            paymentClient.requestOrderPayment(paymentRequest);
+        } catch (FeignException e) {
+            System.out.println("Feign Error Content: " + e.contentUTF8()); // print exact error from payment-service
+            throw e;
+        }
 
         return order.getId();
     }
@@ -79,5 +85,23 @@ public class OrderService {
 
 
 
+    public List<OrderResponse> findOrdersByCustomerId(Integer customerId) {
+        return repository.findAllByCustomerId(customerId)
+                .stream()
+                .map(mapper::fromOrder)
+                .collect(Collectors.toList());
+    }
+    @Transactional
+    public void cancelOrder(Integer orderId) {
+        if (!repository.existsById(orderId)) {
+            throw new EntityNotFoundException("Order with ID " + orderId + " not found");
+        }
+
+        // Step 1: Delete all order lines for this order
+        orderLineService.deleteByOrderId(orderId);
+
+        // Step 2: Delete the order itself
+        repository.deleteById(orderId);
+    }
 
 }
